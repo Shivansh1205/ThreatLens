@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ThreatLens Backend
 
 Adaptive Behavior-Based Intrusion Detection and Threat Analysis System using FastAPI.
@@ -38,3 +39,6 @@ Get recent alerts (last 24 hours):
 ```bash
 curl "http://127.0.0.1:8000/alerts/recent?hours=24"
 ```
+=======
+# ThreatLens
+>>>>>>> 89d15350e16261bf827636875b0db6abeb5f30e8

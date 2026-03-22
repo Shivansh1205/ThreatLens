@@ -25,6 +25,9 @@ class UserProfile(Base):
     candidate_ip = Column(String, nullable=True)
     candidate_ip_hits = Column(Integer, default=0)
 
+    behavior_label = Column(String, default="normal")  # normal | suspicious | high-risk
+    risk_score = Column(Integer, default=0)
+
     last_updated = Column(DateTime, default=datetime.utcnow)
 
 

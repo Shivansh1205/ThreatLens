@@ -13,6 +13,8 @@ class UserProfile(Base):
     avg_login_attempts = Column(Float, nullable=True)
     typical_login_start_hour = Column(Integer, nullable=True)
     typical_login_end_hour = Column(Integer, nullable=True)
+    behavior_label = Column(String, default="normal")  # normal | suspicious | high-risk
+    risk_score = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_updated = Column(
         DateTime(timezone=True),

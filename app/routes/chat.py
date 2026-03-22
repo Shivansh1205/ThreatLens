@@ -1,25 +1,32 @@
-import json
 import logging
 import re
+import uuid
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.database.session import get_db
 from app.models.alert import Alert
 from app.models.user_profile import UserProfile
 from app.schemas.chat_schema import ChatRequest, ChatResponse
-from app.services.llm_explainer import build_chat_prompt, call_llm
+from app.services.llm_explainer import build_chat_prompt, build_context_prompt, call_llm
 
-logger = logging.getLogger("sentinelai.routes.chat")
+logger = logging.getLogger("threatlens.routes.chat")
 router = APIRouter()
+
+MENU_OPTIONS = [
+    "🔴 Show high-risk users",
+    "🚨 Summarise recent alerts",
+    "🔍 Investigate a specific user",
+    "🌐 Check risky IPs or ports",
+    "💬 Ask a custom question",
+]
 
 _STOPWORDS = {"why", "is", "the", "a", "an", "what", "how", "who", "risky",
               "user", "alert", "alerts", "about", "tell", "me", "show", "any"}
 
 
 def _extract_user_id(query: str) -> str | None:
-    """Extract a user_id token from the query, ignoring common stopwords."""
     for token in re.findall(r"[a-zA-Z0-9_\-]+", query):
         if token.lower() not in _STOPWORDS:
             return token
@@ -27,10 +34,12 @@ def _extract_user_id(query: str) -> str | None:
 
 
 def _serialize_alert(alert: Alert) -> dict:
+    reason_str = getattr(alert, "reasons", None) or getattr(alert, "reason", "") or ""
     try:
-        reasons = json.loads(alert.reasons or "[]")
-    except (json.JSONDecodeError, TypeError):
-        reasons = [alert.reasons]
+        import json
+        reasons = json.loads(reason_str)
+    except Exception:
+        reasons = [r.strip() for r in reason_str.split(";") if r.strip()]
     return {
         "user_id":    alert.user_id,
         "ip":         alert.ip,
@@ -41,66 +50,81 @@ def _serialize_alert(alert: Alert) -> dict:
 
 
 def _serialize_profile(profile: UserProfile) -> dict:
-    try:
-        usual_ips = json.loads(profile.usual_ips or "[]")
-    except (json.JSONDecodeError, TypeError):
-        usual_ips = []
     return {
         "user_id":       profile.user_id,
-        "usual_ips":     usual_ips,
-        "total_logins":  profile.total_logins,
-        "failed_logins": profile.failed_logins,
-        "avg_hour":      round(profile.avg_hour, 2) if profile.avg_hour >= 0 else None,
-        "last_seen":     profile.last_seen.isoformat() if profile.last_seen else None,
+        "usual_ips":     [profile.usual_ip] if profile.usual_ip else [],
+        "total_logins":  None,
+        "failed_logins": None,
+        "avg_hour":      profile.typical_login_start_hour,
+        "last_seen":     profile.last_updated.isoformat() if profile.last_updated else None,
     }
 
 
-@router.post("/chat", response_model=ChatResponse, summary="RAG-style threat chat", tags=["Chat"])
+@router.post("/chat", response_model=ChatResponse, tags=["Chat"])
 def chat(request: ChatRequest, db: Session = Depends(get_db)):
-    """
-    Answer a natural-language question about recent alerts and user behaviour.
+    session_id = request.session_id or str(uuid.uuid4())
+    query = request.query.strip()
+    context = request.context
 
-    Context injected into the prompt:
-    - Last 10 alerts (filtered by user_id if mentioned in query, else global)
-    - Behaviour profile of the mentioned user (if found)
+    # Step 1: No context yet → show menu
+    if not context:
+        return ChatResponse(
+            answer="Hey! I'm your ThreatLens security assistant. What would you like to know?",
+            options=MENU_OPTIONS,
+            session_id=session_id,
+        )
 
-    Example queries:
-    - "Why is alice risky?"
-    - "What happened with IP 10.99.0.1?"
-    - "Summarise the latest threats"
-    """
-    query = request.query
-    logger.info(f"[CHAT] Query: {query!r}")
-
-    # ── Context retrieval ────────────────────────────────────────────────────
-    user_id = _extract_user_id(query)
+    # Step 2: User selected an option or is in a context → answer
     alerts_q = db.query(Alert).order_by(Alert.timestamp.desc())
+    profiles = db.query(UserProfile).all()
 
-    if user_id:
-        user_alerts = alerts_q.filter(Alert.user_id == user_id).limit(10).all()
-        recent_alerts = user_alerts if user_alerts else alerts_q.limit(10).all()
+    # Route based on selected context
+    if "high-risk" in context.lower():
+        high_risk = [p for p in profiles if getattr(p, "behavior_label", "") == "high-risk"]
+        auto_query = "Which users are high-risk and why?"
+        alerts_data = [_serialize_alert(a) for a in alerts_q.limit(10).all()]
+        profile_data = [_serialize_profile(p) for p in high_risk] if high_risk else None
+
+    elif "recent alerts" in context.lower() or "summarise" in context.lower():
+        auto_query = "Summarise the most recent security alerts."
+        alerts_data = [_serialize_alert(a) for a in alerts_q.limit(10).all()]
+        profile_data = None
+
+    elif "investigate" in context.lower():
+        user_id = _extract_user_id(query) if query else None
+        if not user_id or query == context:
+            # Ask for username first
+            return ChatResponse(
+                answer="Sure! Which user would you like me to investigate? Please type their username.",
+                options=None,
+                session_id=session_id,
+            )
+        auto_query = f"Why is {user_id} risky? Give a detailed analysis."
+        user_alerts = alerts_q.filter(Alert.user_id == user_id).limit(5).all()
+        alerts_data = [_serialize_alert(a) for a in (user_alerts or alerts_q.limit(5).all())]
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        profile_data = _serialize_profile(profile) if profile else None
+
+    elif "ip" in context.lower() or "port" in context.lower():
+        auto_query = "Which IPs and ports are showing risky or suspicious activity?"
+        alerts_data = [_serialize_alert(a) for a in alerts_q.limit(10).all()]
+        profile_data = None
+
     else:
-        recent_alerts = alerts_q.limit(10).all()
+        # Custom question — use query as-is
+        auto_query = query
+        user_id = _extract_user_id(query)
+        user_alerts = alerts_q.filter(Alert.user_id == user_id).limit(5).all() if user_id else []
+        alerts_data = [_serialize_alert(a) for a in (user_alerts or alerts_q.limit(5).all())]
+        profile = db.query(UserProfile).filter(UserProfile.user_id == user_id).first() if user_id else None
+        profile_data = _serialize_profile(profile) if profile else None
 
-    profile = (
-        db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
-        if user_id else None
+    effective_query = query if (query and query != context) else auto_query
+    prompt = build_chat_prompt(effective_query, alerts_data, profile_data)
+    answer = call_llm(prompt, fallback="I couldn't generate a response. Please try again.")
+
+    return ChatResponse(
+        answer=answer,
+        options=["🔁 Ask another question", "🏠 Back to menu"],
+        session_id=session_id,
     )
-
-    alerts_data  = [_serialize_alert(a) for a in recent_alerts]
-    profile_data = _serialize_profile(profile) if profile else None
-
-    logger.info(
-        f"[CHAT] Context — alerts={len(alerts_data)}  "
-        f"user_id={user_id!r}  profile_found={profile_data is not None}"
-    )
-
-    # ── Build prompt + call LLM ──────────────────────────────────────────────
-    prompt = build_chat_prompt(query, alerts_data, profile_data)
-    answer = call_llm(
-        prompt,
-        fallback="Based on recent alerts, suspicious activity was detected. "
-                 "Please review the /alerts endpoint for details."
-    )
-
-    return ChatResponse(answer=answer)

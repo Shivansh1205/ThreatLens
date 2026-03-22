@@ -26,3 +26,7 @@ Thumbs.db
 # Test artifacts
 test_report.json
 sentinelai.db
+
+
+#node modules
+node_modules/

@@ -10,30 +10,38 @@ export default function Chat() {
   const [loading, setLoading] = useState(false);
   const [started, setStarted] = useState(false);
 
-  const sendMessage = (query, selectedContext) => {
-    const userMsg = { role: "user", text: query };
-    setMessages((prev) => [...prev, userMsg]);
+  const sendMessage = async (query, selectedContext) => {
+    setMessages((prev) => [...prev, { role: "user", text: query }]);
     setOptions(null);
     setLoading(true);
 
-    API.post("/chat", {
-      query,
-      session_id: sessionId,
-      context: selectedContext,
-    })
-      .then((res) => {
-        const { answer, options: newOptions, session_id } = res.data;
-        setMessages((prev) => [...prev, { role: "assistant", text: answer }]);
-        setOptions(newOptions?.length ? newOptions : null);
-        if (session_id) setSessionId(session_id);
-      })
-      .catch(() =>
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: "Something went wrong. Is the backend running?" },
-        ])
-      )
-      .finally(() => setLoading(false));
+    console.log("Sending query:", query, "context:", selectedContext);
+
+    try {
+      const res = await API.post("/chat", {
+        query,
+        session_id: sessionId,
+        context: selectedContext,
+      });
+
+      console.log("Response:", res.data);
+
+      const answer = res.data?.answer || "No response from backend.";
+      const newOptions = res.data?.options || null;
+      const newSessionId = res.data?.session_id || sessionId;
+
+      setMessages((prev) => [...prev, { role: "assistant", text: answer }]);
+      setOptions(newOptions?.length ? newOptions : null);
+      setSessionId(newSessionId);
+    } catch (err) {
+      console.error("Chat error:", err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "Error connecting to backend. Is it running?" },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleStart = () => {
@@ -48,7 +56,6 @@ export default function Chat() {
       return;
     }
     if (option === "🔁 Ask another question") {
-      setContext(context);
       setOptions(null);
       return;
     }
@@ -58,7 +65,7 @@ export default function Chat() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || loading) return;
     const q = input.trim();
     setInput("");
     sendMessage(q, context);
@@ -94,7 +101,7 @@ export default function Chat() {
             )}
           </div>
 
-          {options && (
+          {options && !loading && (
             <div className="chat-options">
               {options.map((opt, i) => (
                 <button key={i} className="chat-option-btn" onClick={() => handleOptionClick(opt)}>
@@ -115,7 +122,7 @@ export default function Chat() {
                 autoFocus
               />
               <button className="chat-btn" type="submit" disabled={loading}>
-                Send
+                {loading ? "Thinking..." : "Send"}
               </button>
             </form>
           )}

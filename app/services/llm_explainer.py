@@ -96,9 +96,12 @@ def call_ollama(prompt: str) -> str | None:
 
 def call_llm(prompt: str, fallback: str = "No response generated.") -> str:
     print("Using Ollama (Mistral)...")
-    result = call_ollama(prompt)
-    if result:
-        return result
+    try:
+        result = call_ollama(prompt)
+        if result:
+            return result.strip()
+    except Exception as e:
+        print("LLM ERROR:", e)
     return fallback
 
 

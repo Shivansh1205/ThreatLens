@@ -1,32 +1,37 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
-*.pyd
-*.db
-*.sqlite3
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
 
 # Environment
 .env
-venv/
-env/
+
+# Database
+*.db
+*.sqlite3
 
 # Logs
 *.log
-test_logs.txt
+server.log
+
+# Node
+sentinelai-frontend/node_modules/
+sentinelai-frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
 
 # OS
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
-
 # Test artifacts
 test_report.json
-sentinelai.db
-
-
-#node modules
-node_modules/
+test_logs.txt

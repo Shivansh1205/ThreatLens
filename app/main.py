@@ -9,6 +9,7 @@ from app.routes.alerts import router as alerts_router
 from app.routes.logs import router as logs_router
 from app.routes.chat import router as chat_router
 from app.routes.dashboard import router as dashboard_router
+from app.routes.users import router as users_router
 
 app = FastAPI(
     title="ThreatLens",
@@ -39,3 +40,4 @@ app.include_router(logs_router)
 app.include_router(alerts_router)
 app.include_router(chat_router)
 app.include_router(dashboard_router)
+app.include_router(users_router)

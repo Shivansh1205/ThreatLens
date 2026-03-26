@@ -16,5 +16,6 @@ class LogCreate(BaseModel):
 class LogIngestResponse(BaseModel):
     log_id: int
     risk_score: int
-    alerted: bool
+    alert_generated: bool
     alert_id: Optional[int] = None
+    reasons: list[str] = []

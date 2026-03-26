@@ -30,11 +30,13 @@ def ingest_log(payload: LogCreate, db: Session = Depends(get_db)):
 
     alert = None
     if risk_score >= ALERT_THRESHOLD:
+        reasons_str = "; ".join(reasons) if reasons else "risk threshold exceeded"
         alert = Alert(
             ip=payload.ip,
             user_id=payload.user_id,
             risk_score=risk_score,
-            reason="; ".join(reasons) if reasons else "risk threshold exceeded",
+            reason=reasons_str,
+            explanation=f"Alert generated for {payload.user_id} on {payload.ip} due to risk score {risk_score}.",
             timestamp=datetime.utcnow(),
         )
         db.add(alert)
@@ -52,6 +54,7 @@ def ingest_log(payload: LogCreate, db: Session = Depends(get_db)):
     return LogIngestResponse(
         log_id=log_entry.id,
         risk_score=risk_score,
-        alerted=alert is not None,
+        alert_generated=alert is not None,
         alert_id=alert.id if alert else None,
+        reasons=reasons,
     )

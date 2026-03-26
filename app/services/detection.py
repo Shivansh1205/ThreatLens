@@ -7,7 +7,7 @@ from app.models.user_profile import UserProfile
 
 FAILED_WINDOW_MINUTES = 10
 BRUTE_FORCE_THRESHOLD = 5
-ALERT_THRESHOLD = 60
+ALERT_THRESHOLD = 50
 
 SENSITIVE_PORTS_HIGH = {22, 23, 3389}
 SENSITIVE_PORTS_MED = {445, 3306, 5432}
@@ -25,6 +25,21 @@ def _count_recent_failed_logins(db: Session, user_id: str, now: datetime) -> int
         )
         .count()
     )
+
+
+def _count_recent_distinct_ports(db: Session, ip: str, current_port: int, now: datetime) -> int:
+    window_start = now - timedelta(minutes=5)
+    records = (
+        db.query(LogEntry.port)
+        .filter(
+            LogEntry.ip == ip,
+            LogEntry.timestamp >= window_start,
+        )
+        .all()
+    )
+    ports = {r[0] for r in records}
+    ports.add(current_port)
+    return len(ports)
 
 
 def _is_unusual_time(profile: UserProfile, log_time: datetime) -> bool:
@@ -72,6 +87,11 @@ def analyze_log(db: Session, log: LogEntry, profile: UserProfile) -> tuple[int, 
     if log.action == "login" and _is_unusual_time(profile, log.timestamp):
         risk_score += 15
         reasons.append("unusual login time")
+
+    scan_count = _count_recent_distinct_ports(db, log.ip, log.port, now)
+    if scan_count >= 5:
+        risk_score += 35
+        reasons.append(f"port scan pattern detected: {scan_count} distinct ports")
 
     # Port-based risk: flag sensitive ports with additional weight.
     if log.port in SENSITIVE_PORTS_HIGH:

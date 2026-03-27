@@ -12,6 +12,16 @@ class AlertOut(BaseModel):
     reason: str
     reasons: List[str] = []
     explanation: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_nulls(cls, values):
+        if hasattr(values, '__dict__'):
+            if getattr(values, 'explanation', None) is None:
+                values.explanation = ""
+        elif isinstance(values, dict) and values.get('explanation') is None:
+            values['explanation'] = ""
+        return values
     timestamp: datetime
 
     @model_validator(mode="after")

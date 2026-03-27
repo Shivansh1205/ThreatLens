@@ -22,7 +22,7 @@ def log(user_id, ip, action, status, port, offset=0):
         "port": port,
     })
     data = r.json()
-    print(f"  [{user_id}] score={data.get('risk_score')} alerted={data.get('alerted')} reasons={data.get('reasons','')}")
+    print(f"  [{user_id}] score={data.get('risk_score')} alerted={data.get('alert_generated')} reasons={data.get('reasons','')}")
     return data
 
 print("\n=== Seeding SentinelAI with threat data ===\n")

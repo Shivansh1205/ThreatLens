@@ -7,7 +7,7 @@ from app.models.user_profile import UserProfile
 
 FAILED_WINDOW_MINUTES = 10
 BRUTE_FORCE_THRESHOLD = 5
-ALERT_THRESHOLD = 40
+ALERT_THRESHOLD = 50
 
 SENSITIVE_PORTS_HIGH = {22, 23, 3389}
 SENSITIVE_PORTS_MED = {445, 3306, 5432}
@@ -27,6 +27,21 @@ def _count_recent_failed_logins(db: Session, user_id: str, now: datetime) -> int
     )
 
 
+def _count_recent_distinct_ports(db: Session, ip: str, current_port: int, now: datetime) -> int:
+    window_start = now - timedelta(minutes=5)
+    records = (
+        db.query(LogEntry.port)
+        .filter(
+            LogEntry.ip == ip,
+            LogEntry.timestamp >= window_start,
+        )
+        .all()
+    )
+    ports = {r[0] for r in records}
+    ports.add(current_port)
+    return len(ports)
+
+
 def _is_unusual_time(profile: UserProfile, log_time: datetime) -> bool:
     if profile.typical_login_start_hour is None or profile.typical_login_end_hour is None:
         return False
@@ -42,20 +57,22 @@ def _is_unusual_time(profile: UserProfile, log_time: datetime) -> bool:
 def analyze_log(db: Session, log: LogEntry, profile: UserProfile) -> tuple[int, list[str]]:
     reasons: list[str] = []
     risk_score = 0
-
-    # Always use server time so the window query is consistent
     now = datetime.utcnow()
 
-    # Brute-force: log is already committed, so count includes current log
+    # Brute-force detection uses failed login bursts in a short window.
     failed_count = 0
     if log.action == "login":
         failed_count = _count_recent_failed_logins(db, log.user_id, now)
+        if log.status == "failed":
+            failed_count += 1
 
     if failed_count >= BRUTE_FORCE_THRESHOLD:
-        risk_score += 50
-        reasons.append(f"brute force: {failed_count} failed logins in {FAILED_WINDOW_MINUTES}m")
+        risk_score += 40
+        reasons.append(
+            f"brute force suspected: {failed_count} failed logins in {FAILED_WINDOW_MINUTES}m"
+        )
     elif failed_count >= 3:
-        risk_score += 30
+        risk_score += 25
         reasons.append(f"multiple failed logins: {failed_count} in {FAILED_WINDOW_MINUTES}m")
     elif log.action == "login" and log.status == "failed":
         risk_score += 10
@@ -71,12 +88,17 @@ def analyze_log(db: Session, log: LogEntry, profile: UserProfile) -> tuple[int, 
         risk_score += 15
         reasons.append("unusual login time")
 
-    # Port-based risk
+    scan_count = _count_recent_distinct_ports(db, log.ip, log.port, now)
+    if scan_count >= 5:
+        risk_score += 35
+        reasons.append(f"port scan pattern detected: {scan_count} distinct ports")
+
+    # Port-based risk: flag sensitive ports with additional weight.
     if log.port in SENSITIVE_PORTS_HIGH:
-        risk_score += 30
+        risk_score += 20
         reasons.append(f"sensitive port {log.port}")
     elif log.port in SENSITIVE_PORTS_MED:
-        risk_score += 15
+        risk_score += 10
         reasons.append(f"risky port {log.port}")
 
     risk_score = min(risk_score, 100)

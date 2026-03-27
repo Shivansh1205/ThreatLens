@@ -2,7 +2,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.database.session import get_db
@@ -10,9 +10,6 @@ from app.models.alert import Alert
 from app.models.user_profile import UserProfile
 
 router = APIRouter(tags=["dashboard"])
-
-# Connected WebSocket clients
-_ws_clients: list[WebSocket] = []
 
 
 @router.get("/dashboard")
@@ -57,35 +54,3 @@ def get_dashboard(db: Session = Depends(get_db)):
             for a in recent_alerts
         ],
     }
-
-
-@router.websocket("/ws/alerts")
-async def ws_alerts(websocket: WebSocket, db: Session = Depends(get_db)):
-    await websocket.accept()
-    _ws_clients.append(websocket)
-    try:
-        while True:
-            # Send latest alert every 3 seconds
-            await asyncio.sleep(3)
-            recent_cutoff = datetime.utcnow() - timedelta(minutes=1)
-            alerts = (
-                db.query(Alert)
-                .filter(Alert.timestamp >= recent_cutoff)
-                .order_by(Alert.timestamp.desc())
-                .limit(5)
-                .all()
-            )
-            payload = [
-                {
-                    "id": a.id,
-                    "user_id": a.user_id,
-                    "ip": a.ip,
-                    "risk_score": a.risk_score,
-                    "reasons": [r.strip() for r in (a.reason or "").split(";") if r.strip()],
-                    "timestamp": a.timestamp.isoformat() if a.timestamp else None,
-                }
-                for a in alerts
-            ]
-            await websocket.send_text(json.dumps(payload))
-    except WebSocketDisconnect:
-        _ws_clients.remove(websocket)

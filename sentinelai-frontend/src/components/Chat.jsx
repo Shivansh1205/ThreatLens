@@ -2,6 +2,7 @@ import { useState } from "react";
 import { API } from "../api";
 
 export default function Chat() {
+  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [options, setOptions] = useState(null);
@@ -15,8 +16,6 @@ export default function Chat() {
     setOptions(null);
     setLoading(true);
 
-    console.log("Sending query:", query, "context:", selectedContext);
-
     try {
       const res = await API.post("/chat", {
         query,
@@ -24,21 +23,14 @@ export default function Chat() {
         context: selectedContext,
       });
 
-      console.log("Response:", res.data);
-
       const answer = res.data?.answer || "No response from backend.";
       const newOptions = res.data?.options || null;
-      const newSessionId = res.data?.session_id || sessionId;
-
       setMessages((prev) => [...prev, { role: "assistant", text: answer }]);
       setOptions(newOptions?.length ? newOptions : null);
-      setSessionId(newSessionId);
+      if (res.data?.session_id) setSessionId(res.data.session_id);
     } catch (err) {
       console.error("Chat error:", err);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: "Error connecting to backend. Is it running?" },
-      ]);
+      setMessages((prev) => [...prev, { role: "assistant", text: "Error connecting to backend." }]);
     } finally {
       setLoading(false);
     }
@@ -50,15 +42,8 @@ export default function Chat() {
   };
 
   const handleOptionClick = (option) => {
-    if (option === "🏠 Back to menu") {
-      setContext(null);
-      sendMessage("start", null);
-      return;
-    }
-    if (option === "🔁 Ask another question") {
-      setOptions(null);
-      return;
-    }
+    if (option === "🏠 Back to menu") { setContext(null); sendMessage("start", null); return; }
+    if (option === "🔁 Ask another question") { setOptions(null); return; }
     setContext(option);
     sendMessage(option, option);
   };
@@ -72,27 +57,28 @@ export default function Chat() {
   };
 
   return (
-    <section className="card">
-      <h2 className="section-title">💬 Threat Assistant</h2>
+    <>
+      {open && (
+        <div className="chat-window">
+          <div className="chat-window-header">
+            <span>💬 Threat Assistant</span>
+            <button className="chat-close-btn" onClick={() => setOpen(false)}>✕</button>
+          </div>
 
-      {!started ? (
-        <div className="chat-start">
-          <p className="muted">Ask me anything about your system's security posture.</p>
-          <button className="chat-btn" onClick={handleStart}>
-            Start Chat
-          </button>
-        </div>
-      ) : (
-        <>
           <div className="chat-messages">
-            {messages.map((msg, i) => (
-              <div key={i} className={`chat-bubble chat-bubble--${msg.role}`}>
-                <span className="chat-bubble-label">
-                  {msg.role === "user" ? "You" : "ThreatLens"}
-                </span>
-                <p>{msg.text}</p>
+            {!started ? (
+              <div className="chat-bubble chat-bubble--assistant">
+                <span className="chat-bubble-label">ThreatLens</span>
+                <p>Hey! I'm your security assistant. Click below to start.</p>
               </div>
-            ))}
+            ) : (
+              messages.map((msg, i) => (
+                <div key={i} className={`chat-bubble chat-bubble--${msg.role}`}>
+                  <span className="chat-bubble-label">{msg.role === "user" ? "You" : "ThreatLens"}</span>
+                  <p>{msg.text}</p>
+                </div>
+              ))
+            )}
             {loading && (
               <div className="chat-bubble chat-bubble--assistant">
                 <span className="chat-bubble-label">ThreatLens</span>
@@ -101,33 +87,35 @@ export default function Chat() {
             )}
           </div>
 
-          {options && !loading && (
+          {!started ? (
+            <div className="chat-window-footer">
+              <button className="chat-btn" style={{ width: "100%" }} onClick={handleStart}>Start Chat</button>
+            </div>
+          ) : options && !loading ? (
             <div className="chat-options">
               {options.map((opt, i) => (
-                <button key={i} className="chat-option-btn" onClick={() => handleOptionClick(opt)}>
-                  {opt}
-                </button>
+                <button key={i} className="chat-option-btn" onClick={() => handleOptionClick(opt)}>{opt}</button>
               ))}
             </div>
-          )}
-
-          {!options && (
-            <form className="chat-form" onSubmit={handleSubmit}>
+          ) : (
+            <form className="chat-window-footer" onSubmit={handleSubmit}>
               <input
                 className="chat-input"
                 type="text"
-                placeholder="Type your message..."
+                placeholder="Type a message..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 autoFocus
               />
-              <button className="chat-btn" type="submit" disabled={loading}>
-                {loading ? "Thinking..." : "Send"}
-              </button>
+              <button className="chat-btn" type="submit" disabled={loading}>➤</button>
             </form>
           )}
-        </>
+        </div>
       )}
-    </section>
+
+      <button className="chat-fab" onClick={() => setOpen((o) => !o)}>
+        {open ? "✕" : "💬"}
+      </button>
+    </>
   );
 }

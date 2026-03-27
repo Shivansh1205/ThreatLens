@@ -1,3 +1,5 @@
+import { motion, AnimatePresence } from "framer-motion";
+
 const getColor = (risk) => {
   if (risk < 30) return "green";
   if (risk < 60) return "orange";
@@ -13,7 +15,15 @@ function AlertCard({ alert }) {
     : [];
 
   return (
-    <div className="alert-card" style={{ borderLeftColor: color }}>
+    <motion.div
+      className="alert-card"
+      style={{ borderLeftColor: color }}
+      initial={{ opacity: 0, y: -12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      layout
+    >
       <div className="alert-header">
         <span className="alert-user">{alert.user_id}</span>
         <span className="alert-ip">{alert.ip}</span>
@@ -36,7 +46,7 @@ function AlertCard({ alert }) {
       {alert.explanation && (
         <p className="alert-explanation">{alert.explanation}</p>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -53,9 +63,11 @@ export default function Alerts({ alerts, loading, error }) {
       )}
 
       <div className="alert-list">
-        {alerts.map((alert) => (
-          <AlertCard key={alert.id} alert={alert} />
-        ))}
+        <AnimatePresence initial={false}>
+          {alerts.map((alert) => (
+            <AlertCard key={alert.id} alert={alert} />
+          ))}
+        </AnimatePresence>
       </div>
     </section>
   );

@@ -16,9 +16,10 @@ import {
 } from "recharts"
 
 const COLORS = {
-  high: "#EF4444",
-  medium: "#F59E0B",
-  low: "#10B981"
+  critical: "#9b2335", // Dark Red for Critical
+  high: "#EF4444",     // Bright Red for High
+  medium: "#F59E0B",   // Orange for Medium
+  low: "#10B981"       // Green for Low
 }
 
 export default function Charts({ alerts }) {
@@ -28,32 +29,40 @@ export default function Charts({ alerts }) {
 
     // Aggregate activity by hour
     const hourCounts = {}
+    let criticalCount = 0
     let highCount = 0
     let medCount = 0
     let lowCount = 0
 
     alerts.forEach(a => {
-      // Activity
+      // 1. Activity Timeline Logic
       const date = a.timestamp ? new Date(a.timestamp) : new Date()
-      // Use hour formatting (e.g. "14:00")
       const hour = `${date.getHours().toString().padStart(2, "0")}:00`
       hourCounts[hour] = (hourCounts[hour] || 0) + 1
 
-      // Severity
-      if (a.risk_score >= 60) highCount++
-      else if (a.risk_score >= 30) medCount++
-      else lowCount++
+      // 2. Severity Counting Logic (Fixed so it doesn't double-count)
+      if (a.risk_score >= 90) {
+        criticalCount++
+      } else if (a.risk_score >= 60) {
+        highCount++
+      } else if (a.risk_score >= 30) {
+        medCount++
+      } else {
+        lowCount++
+      }
     })
 
     const activity = Object.keys(hourCounts)
       .sort((a, b) => a.localeCompare(b))
       .map(time => ({ time, threats: hourCounts[time] }))
 
+    // 3. Prepare Data for Pie Chart (Includes Critical Risk now)
     const severity = [
+      { name: "Critical Risk", value: criticalCount, color: COLORS.critical },
       { name: "High Risk", value: highCount, color: COLORS.high },
       { name: "Medium Risk", value: medCount, color: COLORS.medium },
       { name: "Low Risk", value: lowCount, color: COLORS.low },
-    ].filter(s => s.value > 0)
+    ].filter(s => s.value > 0) // Only show categories that have at least 1 alert
 
     return { activityData: activity, severityData: severity }
   }, [alerts])
@@ -104,7 +113,7 @@ export default function Charts({ alerts }) {
         </CardContent>
       </Card>
 
-      {/* Severity Breakdown */}
+      {/* Severity Breakdown (Pie Chart) */}
       <Card className="col-span-1 bg-panel flex flex-col h-[350px]">
         <CardHeader className="border-b border-white/5 pb-4">
           <div className="flex items-center gap-2">

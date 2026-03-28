@@ -7,7 +7,7 @@ export default function RiskChart({ alerts }) {
   const counts = { Low: 0, Medium: 0, High: 0, Critical: 0 };
 
   alerts.forEach(({ risk_score }) => {
-    if (risk_score >= 80) counts.Critical++;
+    if (risk_score >= 90) counts.Critical++;
     else if (risk_score >= 60) counts.High++;
     else if (risk_score >= 30) counts.Medium++;
     else counts.Low++;

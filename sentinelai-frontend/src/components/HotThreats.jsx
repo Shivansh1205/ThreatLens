@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
 import { Badge } from "./ui/badge"
 
 const getSeverity = (score) => {
-  if (score >= 80) return { label: "CRITICAL", variant: "danger" }
+  if (score >= 90) return { label: "CRITICAL", variant: "danger" } 
   if (score >= 60) return { label: "HIGH", variant: "warning" }
   if (score >= 30) return { label: "MEDIUM", variant: "accent" }
   return { label: "LOW", variant: "success" }

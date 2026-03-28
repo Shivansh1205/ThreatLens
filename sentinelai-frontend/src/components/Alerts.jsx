@@ -4,7 +4,7 @@ import { Badge } from "./ui/badge"
 import { Button } from "./ui/button"
 
 const getSeverity = (score) => {
-  if (score >= 80) return { label: "CRITICAL", variant: "danger" }
+  if (score >= 90) return { label: "CRITICAL", variant: "danger" } // Check 90 first
   if (score >= 60) return { label: "HIGH", variant: "warning" }
   if (score >= 30) return { label: "MEDIUM", variant: "accent" }
   return { label: "LOW", variant: "success" }
